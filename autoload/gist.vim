@@ -115,6 +115,15 @@
 let s:save_cpo = &cpo
 set cpo&vim
 
+if !exists('g:gist_github_hostname')
+  let g:gist_github_hostname = 'github.com'
+endif
+
+if !exists('g:gist_force_http')
+  let g:gist_force_http = 0
+endif
+let s:https = g:gist_force_http ? 'http': 'https'
+
 if !exists('g:gist_open_browser_after_post')
   let g:gist_open_browser_after_post = 0
 endif
@@ -195,13 +204,13 @@ endfunction
 let s:bufprefix = 'gist' . (has('unix') ? ':' : '_')
 function! s:GistList(user, token, gistls, page)
   if a:gistls == '-all'
-    let url = 'https://gist.github.com/gists'
+    let url = s:https.'://gist.'.g:gist_github_hostname.'/gists'
   elseif g:gist_show_privates && a:gistls == 'starred'
-    let url = 'https://gist.github.com/starred'
+    let url = s:https.'://gist.'.g:gist_github_hostname.'/starred'
   elseif g:gist_show_privates && a:gistls == a:user
-    let url = 'https://gist.github.com/mine'
+    let url = s:https.'://gist.'.g:gist_github_hostname.'/mine'
   else
-    let url = 'https://gist.github.com/'.a:gistls
+    let url = s:https.'://gist.'.g:gist_github_hostname.'/'.a:gistls
   endif
   let winnum = bufwinnr(bufnr(s:bufprefix.a:gistls))
   if winnum != -1
@@ -287,7 +296,7 @@ function! s:GistList(user, token, gistls, page)
 endfunction
 
 function! s:GistGetFileName(gistid)
-  let url = 'https://gist.github.com/'.a:gistid
+  let url = s:https.'://gist.'.g:gist_github_hostname.'/'.a:gistid
   let res = system('curl -s '.g:gist_curl_options.' '.url)
   let res = matchstr(res, '^.*<a href="/raw/[^"]\+/\zs\([^"]\+\)\ze".*$')
   if res =~ '/'
@@ -298,7 +307,7 @@ function! s:GistGetFileName(gistid)
 endfunction
 
 function! s:GistDetectFiletype(gistid)
-  let url = 'https://gist.github.com/'.a:gistid
+  let url = s:https.'://gist.'.g:gist_github_hostname.'/'.a:gistid
   let mx = '^.*<div class=".\{-}type-\zs\([^"]\+\)\ze">.*$'
   let res = system('curl -s '.g:gist_curl_options.' '.url)
   let res = matchstr(res, mx)
@@ -327,7 +336,7 @@ function! s:GistWrite(fname)
 endfunction
 
 function! s:GistGet(user, token, gistid, clipboard)
-  let url = 'https://raw.github.com/gist/'.a:gistid
+  let url = s:https.'://raw.'.g:gist_github_hostname.'/gist/'.a:gistid
   let winnum = bufwinnr(bufnr(s:bufprefix.a:gistid))
   if winnum != -1
     if winnum != bufwinnr('%')
@@ -418,7 +427,7 @@ function! s:GistUpdate(user, token, content, gistid, gistnm, desc)
   if a:gistid !~ '^\d\+$'
     redraw
     echon 'Login to gist... '
-    let res = s:GistGetPage('https://gist.github.com/'.a:gistid, a:user, '', '')
+    let res = s:GistGetPage(s:https.'://gist.'.g:gist_github_hostname.'/'.a:gistid, a:user, '', '')
     if (!len(res))
       echohl ErrorMsg | echomsg 'Wrong password? no response received from github trying to update ' . a:gistid | echohl None
       return
@@ -436,13 +445,13 @@ function! s:GistUpdate(user, token, content, gistid, gistnm, desc)
   redraw
   echon 'Updating it to gist... '
   let quote = &shellxquote == '"' ?  "'" : '"'
-  let url = 'https://gist.github.com/gists/'.action
+  let url = s:https.'://gist.'.g:gist_github_hostname.'/gists/'.action
   let res = system('curl -i '.g:gist_curl_options.' -d @'.quote.file.quote.' '.url)
   call delete(file)
   let headers = split(res, '\(\r\?\n\|\r\n\?\)')
   let loc = matchstr(headers, '^Location:')
   let loc = matchstr(loc, '^[^:]\+: \zs.*')
-  if len(loc) > 0 && loc =~ '^\(http\|https\):\/\/gist\.github\.com\/'
+  if len(loc) > 0 && loc =~ '^\(http\|https\):\/\/gist'.g:gist_github_hostname.'\/'
     setlocal nomodified
     redraw
     echomsg 'Done: '.loc
@@ -472,7 +481,7 @@ function! s:GistGetPage(url, user, param, opt)
       echo 'Canceled'
       return
     endif
-    let url = 'https://gist.github.com/login?return_to=gist'
+    let url = s:https.'://gist.'.g:gist_github_hostname.'/login?return_to=gist'
     let res = system('curl -f -L -s '.g:gist_curl_options.' -c '.quote.cookie_file.quote.' '.quote.url.quote)
     let token = matchstr(res, '^.* name="authenticity_token" type="hidden" value="\zs\([^"]\+\)\ze".*$')
 
@@ -493,7 +502,7 @@ function! s:GistGetPage(url, user, param, opt)
     let command = 'curl -f -s '.g:gist_curl_options.' -i'
     let command .= ' -b '.quote.cookie_file.quote
     let command .= ' -c '.quote.cookie_file.quote
-    let command .= ' '.quote.'https://gist.github.com/session'.quote
+    let command .= ' '.quote.s:https.'://gist.'.g:gist_github_hostname.'/session'.quote
     let command .= ' -d @' . quote.file.quote
     call writefile([squery], file)
     let res = system(command)
@@ -538,7 +547,7 @@ endfunction
 function! s:GistDelete(user, token, gistid)
   redraw
   echon 'Deleting gist... '
-  let res = s:GistGetPage('https://gist.github.com/'.a:gistid, a:user, '', '')
+  let res = s:GistGetPage(s:https.'://gist.'.g:gist_github_hostname.'/'.a:gistid, a:user, '', '')
   if (!len(res)) 
     echohl ErrorMsg | echomsg 'Wrong password? no response received from github trying to delete ' . a:gistid | echohl None
     return
@@ -546,7 +555,7 @@ function! s:GistDelete(user, token, gistid)
   let mx = '^.* name="authenticity_token" type="hidden" value="\zs\([^"]\+\)\ze".*$'
   let token = matchstr(res.content, mx)
   if len(token) > 0
-    let res = s:GistGetPage('https://gist.github.com/delete/'.a:gistid, a:user, '_method=delete&authenticity_token='.token, '')
+    let res = s:GistGetPage(s:https.'://gist.'.g:gist_github_hostname.'/delete/'.a:gistid, a:user, '_method=delete&authenticity_token='.token, '')
     if len(res.content) > 0
       redraw
       echomsg 'Done: '
@@ -592,7 +601,7 @@ function! s:GistPost(user, token, content, private, desc)
       cal s:GistUpdate(a:user, a:token,  a:content, gistid, '')
       return
     elseif l =~ '\<Gist:'
-      let gistid = matchstr(l, 'Gist:\s*https://gist.github.com/[0-9a-z]\+')
+      let gistid = matchstr(l, 'Gist:\s*'.s:https.'://gist.'.g:gist_github_hostname.'/[0-9a-z]\+')
 
       if strlen(gistid) == 0
         echohl WarningMsg | echo "GistID error" | echohl None
@@ -650,13 +659,13 @@ function! s:GistPost(user, token, content, private, desc)
   redraw
   echon 'Posting it to gist... '
   let quote = &shellxquote == '"' ?  "'" : '"'
-  let url = 'https://gist.github.com/gists'
+  let url = s:https.'://gist.'.g:gist_github_hostname.'/gists'
   let res = system('curl -f -i '.g:gist_curl_options.' -d @'.quote.file.quote.' '.url)
   call delete(file)
   let headers = split(res, '\(\r\?\n\|\r\n\?\)')
   let loc = matchstr(headers, '^Location:')
   let loc = matchstr(loc, '^[^:]\+: \zs.*')
-  if len(loc) > 0 && loc =~ '^\(http\|https\):\/\/gist\.github\.com\/'
+  if len(loc) > 0 && loc =~ '^\(http\|https\):\/\/gist\.'.g:gist_github_hostname.'\/'
     redraw
     echomsg 'Done: '.loc
   else
@@ -717,7 +726,7 @@ function! s:GistPostBuffers(user, token, private, desc)
   call writefile([squery], file)
   echo "Posting it to gist... "
   let quote = &shellxquote == '"' ?  "'" : '"'
-  let url = 'https://gist.github.com/gists'
+  let url = s:https.'://gist.'.g:gist_github_hostname.'/gists'
   let res = system('curl -i '.g:gist_curl_options.' -d @'.quote.file.quote.' '.url)
   call delete(file)
   let headers = split(res, '\(\r\?\n\|\r\n\?\)')
@@ -813,10 +822,10 @@ function! gist#Gist(count, line1, line2, ...)
       let gistid = matchstr(bufname, bufnamemx)
     elseif arg =~ '^\(+1\|--star\)$\C' && bufname =~ bufnamemx
       let gistid = matchstr(bufname, bufnamemx)
-      let res = s:GistGetPage("https://gist.github.com/star/".gistid, g:github_user, '_method=post', '')
+      let res = s:GistGetPage(s:https."://gist.".g:gist_github_hostname."/star/".gistid, g:github_user, '_method=post', '')
       let loc = matchstr(res.header, '^Location:')
       let loc = matchstr(loc, '^[^:]\+: \zs.*')
-      let mx = '^https://gist.github.com/\zs\([0-9a-z]\+\)$'
+      let mx = '^'.s:https.'://gist.'.g:gist_github_hostname.'/\zs\([0-9a-z]\+\)$'
       if loc =~ mx
         echomsg "Stared" gistid
       else
@@ -825,10 +834,10 @@ function! gist#Gist(count, line1, line2, ...)
       return
     elseif arg =~ '^\(-1\|--unstar\)$\C' && bufname =~ bufnamemx
       let gistid = matchstr(bufname, bufnamemx)
-      let res = s:GistGetPage("https://gist.github.com/unstar/".gistid, g:github_user, '_method=post', '')
+      let res = s:GistGetPage(s:https."://gist.".g:gist_github_hostname."/unstar/".gistid, g:github_user, '_method=post', '')
       let loc = matchstr(res.header, '^Location:')
       let loc = matchstr(loc, '^[^:]\+: \zs.*')
-      let mx = '^https://gist.github.com/\zs\([0-9a-z]\+\)$'
+      let mx = '^'.s:https.'://gist.'.g:gist_github_hostname.'/\zs\([0-9a-z]\+\)$'
       if loc =~ mx
         echomsg "Unstared" gistid
       else
@@ -837,10 +846,10 @@ function! gist#Gist(count, line1, line2, ...)
       return
     elseif arg =~ '^\(-f\|--fork\)$\C' && bufname =~ bufnamemx
       let gistid = matchstr(bufname, bufnamemx)
-      let res = s:GistGetPage("https://gist.github.com/fork/".gistid, g:github_user, '', '')
+      let res = s:GistGetPage(s:https."://gist.".g:gist_github_hostname."/fork/".gistid, g:github_user, '', '')
       let loc = matchstr(res.header, '^Location:')
       let loc = matchstr(loc, '^[^:]\+: \zs.*')
-      let mx = '^https://gist.github.com/\zs\([0-9a-z]\+\)$'
+      let mx = '^'.s:https.'://gist.'.g:gist_github_hostname.'/\zs\([0-9a-z]\+\)$'
       if loc =~ mx
         let gistid = matchstr(loc, mx)
       else
